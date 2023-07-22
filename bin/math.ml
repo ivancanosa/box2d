@@ -47,6 +47,12 @@ module Vec2 = struct
         | 1 -> v.y
         | _ -> v.y
 
+    let nth_set (v: vec2) (i: int) (value: float): vec2 =
+        match i with
+        | 0 -> {x = value; y = v.y}
+        | 1 -> {x = v.x; y = value}
+        | _ -> {x = v.x; y = value}
+
     let is_valid (v: vec2) =
         (is_valid v.x) && (is_valid v.y)
 
@@ -141,6 +147,13 @@ module Vec3 = struct
         | 1 -> v.y
         | 2 -> v.z
         | _ -> v.z
+
+    let nth_set (v: vec3) (i: int) (value: float): vec3 =
+        match i with
+        | 0 -> {x = value; y = v.y; z = v.z}
+        | 1 -> {x = v.x; y = value; z = v.z}
+        | 2 -> {x = v.x; y = v.y; z = value}
+        | _ -> {x = v.x; y = v.y; z = value}
 
     let is_valid (v: vec3) =
         (is_valid v.x) && (is_valid v.y) && (is_valid v.z)
