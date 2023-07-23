@@ -4,6 +4,8 @@ open Math
 
 type aabb = {lower_bound: vec2; upper_bound: vec2}
 
+type mass = {mass: float; center: vec2; rot_inertia: float}
+
 type raycast_in = {
     p1: vec2;
     p2: vec2;
@@ -21,7 +23,7 @@ type raycast_result =
 type circle = {radius: float; position: vec2}
 
 (* p1 and p2 are the actual vertices, p0 and p3 are for smooth collision *)
-type edge = {radious: float; 
+type edge = {radius: float; 
              p1: vec2;
              p2: vec2;
              p0: vec2;
@@ -33,7 +35,6 @@ type shape =
     | Edge of vec2 * vec2
     | Polygon of vec2 list
     | Chain of vec2 list
-
 
 module AABB = struct
     let is_valid aabb =
@@ -54,7 +55,7 @@ module AABB = struct
         let open Vec2 in
         mul_value (aabb.lower_bound + aabb.upper_bound) 0.5
 
-    let compute_extents (aabb: aabb) vec2 =
+    let compute_extents (aabb: aabb) =
         let open Vec2 in
         mul_value (aabb.lower_bound - aabb.upper_bound) 0.5
 
@@ -153,9 +154,25 @@ module Circle = struct
         let d = p - center in
         (dot d d) <= circle.radius *. circle.radius
 
-    (* TODO this *)
-    let compute_AABB (circle: circle) (transform: transform) =
-        None
+    let compute_aabb (circle: circle) (transform: transform): aabb =
+        let open Vec2 in
+        let p = transform.position + rotate circle.position transform.rot in
+        {lower_bound = {
+            x = p.x -. circle.radius;
+            y = p.y -. circle.radius
+        };
+         upper_bound = {
+             x = p.x +. circle.radius;
+             y = p.y +. circle.radius
+        }}
+
+    let compute_mass (circle: circle) (density: float): mass =
+        let open Vec2 in
+        let radius_2 = circle.radius *. circle.radius in
+        let mass = density *. Float.pi *. radius_2 in
+        let center = circle.position in
+        let rot_inertia = mass *. (0.5 *. radius_2 +. (dot circle.position circle.position)) in
+        {mass = mass; center = center; rot_inertia = rot_inertia}
 
     let raycast (circle: circle) (raycast_in: raycast_in) 
         (transform: transform): raycast_result =
@@ -179,6 +196,91 @@ module Circle = struct
                     normal = s + (Vec2.mul_value r a)}
             else
                 None
+end
+
+module Edge = struct
+    let default: edge =
+        {radius = Common.polygon_radius;
+         p0 = Vec2.zero; p1 = Vec2.zero;
+         p2 = Vec2.zero; p3 = Vec2.zero;
+         one_sided = false}
+
+    let create_one_sided v0 v1 v2 v3 : edge =
+        {radius = Common.polygon_radius;
+         p0 = v0; p1 = v1;
+         p2 = v2; p3 = v3;
+         one_sided = true}
+
+    let set_two_sided v1 v2 (edge: edge): edge =
+        {radius = edge.radius;
+         p0 = edge.p0; p1 = v1;
+         p2 = v2; p3 = edge.p3;
+         one_sided = false}
+
+    let test_point (_: edge) (_: transform) (_: vec2): bool =
+        false
+    
+    let compute_aabb (edge: edge) (transform: transform): aabb =
+        let open Vec2 in
+        let v1 = Transform.mul_vec2 transform edge.p1 in
+        let v2 = Transform.mul_vec2 transform edge.p2 in
+
+        let lower = min v1 v2 in
+        let upper = max v1 v2 in
+
+        let r = {x = edge.radius; y = edge.radius} in
+        {lower_bound = lower - r; upper_bound = upper + r}
+
+    let compute_mass (edge: edge) (_: float): mass =
+        let open Vec2 in
+        let center = mul_value (edge.p1 + edge.p2) 0.5 in
+        {mass = 0.; center = center; rot_inertia = 0.}
+
+    let raycast (edge: edge) (raycast_in: raycast_in) (transform: transform) : raycast_result =
+        let open Vec2 in
+        (* Put the ray into the edge's frame of reference *)
+        let p1 = Vec2.rotate_inverse (raycast_in.p1 - transform.position) transform.rot in
+        let p2 = Vec2.rotate_inverse (raycast_in.p2 - transform.position) transform.rot in
+        let d = p2 - p1 in
+        let v1 = edge.p1 in
+        let v2 = edge.p2 in
+        let e = v2  - v1 in
+        let normal = normalize {x = e.y; y =(-.e.x)} in
+
+        let numerator = dot normal (v1 - p1) in
+        if edge.one_sided && numerator > 0. then
+            None
+        else
+            let denominator = dot normal d in
+            if denominator = 0. then
+                None
+            else
+                let t = numerator /. denominator in
+                if t < 0. || raycast_in.max_fraction < t then
+                    None
+                else
+                    let q = p1 + (mul_value d t) in
+                    let r = v2 - v1 in
+                    let rr = dot r r in
+                    if rr = 0. then
+                        None
+                    else
+                        let s = (dot (q - v1) r) /. rr in
+                        if s < 0. || 1. < s then
+                            None
+                        else
+                            if numerator > 0. then
+                                Collision {
+                                    fraction = t;
+                                    normal = mul_value (rotate normal transform.rot) (-.1.)
+                                }
+                            else
+                                Collision {
+                                    fraction = t;
+                                    normal = rotate normal transform.rot
+                                }
+
+
 end
 
 let test_point (circle: edge) (transform: transform) (p: vec2): bool =
