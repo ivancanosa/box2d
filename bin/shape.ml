@@ -78,75 +78,71 @@ module AABB = struct
         let result = result && (Float.compare contained.upper_bound.y origin.upper_bound.y) <= 0 in
         result
 
-    type raycast_aabb_state = {
-        tmin: float;
-        tmax: float;
-        normal: vec2
-    }
-
-    type raycast_aabb_result = 
-        | State of raycast_aabb_state
-        | Result of raycast_result
-
     let raycast (aabb: aabb) (raycast_in: raycast_in) : raycast_result =
         let open Vec2 in
-        let tmin = -.Float.max_float in
-        let tmax = Float.max_float in
+        let tmin = ref (-.Float.max_float) in
+        let tmax = ref Float.max_float in
         let p = raycast_in.p1 in
         let d = raycast_in.p2 - raycast_in.p1 in
         let absD = abs d in
-        let compute (i: int) (state: raycast_aabb_state): raycast_aabb_result =
-            if (Float.compare (nth absD i) Float.epsilon) < 0 then
-                (* raycast is parallel *)
-                if (Float.compare (nth p i) (nth aabb.lower_bound i)) < 0 ||  
-                    (Float.compare (nth aabb.upper_bound i) (nth p i)) < 0 then
-                        Result None
+        let normal = ref Vec2.zero in
+
+        let compute (i: int) : bool =
+            if nth absD i < Float.epsilon then
+                (* Parallel *)
+                if (nth p i) < (nth aabb.lower_bound i) || (nth p i) > (nth aabb.upper_bound i) then
+                    false
                 else
-                     State state
+                    true
             else
-                let inv_d = 1. /. (nth d i) in
+                let inv_d = 1.0 /. (nth d i) in
                 let t1 = ((nth aabb.lower_bound i) -. (nth p i)) *. inv_d in
                 let t2 = ((nth aabb.upper_bound i) -. (nth p i)) *. inv_d in
-                let s = -1. in
-                let maybe_swap s t1 t2 =
-                    if (Float.compare t1 t2) > 0 then
-                        (1., t2, t1)
-                    else
-                        (s, t1, t2)
+                let s = 
+                    if t1 > t2 then 
+                        1.0 
+                    else 
+                        -1.0 
                 in
+                let t1, t2 = 
+                    if t1 > t2 then 
+                        t2, t1 
+                    else 
+                        t1, t2 
+                in
+                tmax := Float.min !tmax t2;
+                if t1 > !tmin then begin
+                    normal := (nth_set Vec2.zero i s);
+                    tmin := t1;
+                    if !tmin > !tmax then
+                        false
+                    else
+                        true
+                end else
+                    if !tmin > !tmax then
+                        false
+                    else
+                        true
+        in
 
-                let s, t1, t2 = maybe_swap s t1 t2 in
-                let maybe_push_min tmin normal =
-                    if (Float.compare t1 tmin) > 0 then
-                        (t1, nth_set Vec2.zero i s)
-                    else
-                        (tmin, normal)
-                in
-                let tmin, normal = maybe_push_min state.tmin state.normal in
-                let tmax = Float.min state.tmax t2 in
-                if (Float.compare tmin tmax) > 0 then
-                    Result None
-                else
-                    State {tmin = tmin; tmax = tmax; normal = normal}
-        in
-        let rec compute' state (i: int) (max: int) =
+        let rec compute' i max =
             if i < max then
-                let state = compute i state in
-                match state with
-                | State state -> compute' state (Int.add i 1) max
-                | Result result -> Result result
+                match compute i with
+                | false -> false
+                | true  -> compute' (Int.add i 1) max
             else
-                State state
+                true
         in
-        let state = compute' {tmin=tmin; tmax=tmax; normal=Vec2.zero} 0 2 in
-        match state with
-        | Result result -> result
-        | State state -> 
-            if (Float.compare state.tmin state.tmax) > 0 then
+
+        let result = compute' 0 2 in
+
+        match result with
+        | false -> None
+        | true -> 
+            if !tmin < 0. || raycast_in.max_fraction < !tmin then
                 None
             else
-                Collision{fraction = state.tmin; normal = state.normal}
-
+                Collision {fraction = !tmin; normal = !normal}
 end
 
 
