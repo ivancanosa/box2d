@@ -1,6 +1,6 @@
 open Base
 open Stdio
-open Box2D
+open Box2d
 
 let () =
     let open Box2D in

@@ -1,7 +1,4 @@
-open Common
 open Math
-open Array
-
 
 type aabb = {lower_bound: vec2; upper_bound: vec2}
 
@@ -70,7 +67,6 @@ module AABB = struct
         mul_value (aabb.lower_bound - aabb.upper_bound) 0.5
 
     let compute_perimeter (aabb: aabb): float =
-        let open Vec2 in
         let wx = aabb.upper_bound.x -. aabb.lower_bound.x in
         let wy = aabb.upper_bound.y -. aabb.lower_bound.y in
         2. *. (wx +. wy)
@@ -189,7 +185,6 @@ module Circle = struct
 
     let raycast (circle: circle) (raycast_in: raycast_in) 
         (transform: transform): raycast_result =
-        let open Transform in
         let open Vec2 in
         let position = transform.position + (rotate circle.position transform.rot) in 
         let s = raycast_in.p1 - position in
@@ -302,11 +297,12 @@ module Polygon = struct
 end
 
 
+    (*
+
 let test_point (circle: edge) (transform: transform) (p: vec2): bool =
     false
 
 
-    (*
 let test_point shape transform point =
     let open Math.Vec2 in
     match shape with

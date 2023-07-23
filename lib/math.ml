@@ -72,11 +72,6 @@ module Vec2 = struct
     let dot (v1: vec2) (v2: vec2) =
       v1.x *. v2.x +. v1.y *. v2.y
 
-    let normalize (v: vec2) =
-      let module_val = Float.sqrt (v.x *. v.x +. v.y *. v.y) in
-      { x = v.x /. module_val; y = v.y /. module_val }
-
-
     let cross_vec2 (a: vec2) (b: vec2) =
         a.x *. b.y -. a.y *. b.x
 
