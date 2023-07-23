@@ -1,2 +1,6 @@
-(test
- (name box2d))
+(library
+ (name box2d_test)
+ (libraries box2d base stdio)
+ (inline_tests)
+ (preprocess (pps ppx_inline_test))
+ )

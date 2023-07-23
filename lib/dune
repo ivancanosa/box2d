@@ -1,2 +1,4 @@
 (library
- (name box2d))
+ (name box2d)
+ (libraries base stdio)
+ )

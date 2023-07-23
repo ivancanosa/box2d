@@ -1,3 +1,4 @@
+open Stdio
 (* types *)
 
 type vec2 = {x: float; y: float}
@@ -15,6 +16,12 @@ type sweep =
       a0: float;
       a: float;
       alpha0: float}
+
+
+let epsilon = 1e-6
+
+let float_eq (f0: float) (f1: float) =
+    (Float.compare (Float.abs (f1 -. f0)) epsilon) <= 0
 
 let next_power_of_two x =
     let x = x lor (x lsr 1) in
@@ -35,6 +42,10 @@ let is_valid (x: float) : bool =
 (* vec2 *)
 
 module Vec2 = struct
+    let equal (v1: vec2) (v2: vec2) =
+        float_eq v1.x v2.x &&
+        float_eq v1.y v2.y
+
     let identity: vec2 =
         {x = 1.; y = 0.}
 
@@ -56,15 +67,15 @@ module Vec2 = struct
     let is_valid (v: vec2) =
         (is_valid v.x) && (is_valid v.y)
 
+    let norm (v: vec2) =
+      Float.sqrt (v.x *. v.x +. v.y *. v.y)
+
     let normalize (v: vec2) =
       if (Float.compare v.x 0.0) <> 0 && (Float.compare v.y 0.0) <> 0 then
-        let module_val = Float.sqrt (v.x *. v.x +. v.y *. v.y) in
+        let module_val = norm v in
         { x = v.x /. module_val; y = v.y /. module_val }
       else
         v
-
-    let norm (v: vec2) =
-      Float.sqrt (v.x *. v.x +. v.y *. v.y)
 
     let norm_squared (v: vec2) =
       v.x *. v.x +. v.y *. v.y
@@ -125,11 +136,22 @@ module Vec2 = struct
     let rotate_inverse (v: vec2) (q: rotation) : vec2 =
         { x = q.cosine *. v.x   +. q.sine *. v.y;
           y = (-.q.sine) *. v.x +. q.cosine *. v.y}
+
+    let print (v: vec2) =
+        printf "{x = %s; " (Float.to_string v.x);
+        printf "y = %s}\n " (Float.to_string v.y);
+
 end
 
 (* vec3 *)
 
 module Vec3 = struct
+
+    let equal (v1: vec3) (v2: vec3) : bool =
+        float_eq v1.x v2.x 
+          && float_eq v1.y v2.y 
+          && float_eq v1.z v2.z 
+
     let identity: vec3 =
         {x = 1.; y = 0.; z = 0.}
 
@@ -165,8 +187,8 @@ module Vec3 = struct
 
     let cross (a: vec3) (b: vec3) =
         {x = (a.y *. b.z -. a.z *. b.y);
-         y = (a.z *. b.z -. a.x *. b.z);
-         z = (a.z *. b.y -. a.y *. b.z)}
+         y = (a.z *. b.x -. a.x *. b.z);
+         z = (a.x *. b.y -. a.y *. b.x)}
 
     let dot (v1: vec3) (v2: vec3) =
         v1.x *. v2.x +. v1.y *. v2.y +. v1.z *. v2.z
@@ -209,11 +231,21 @@ module Vec3 = struct
     let distance_squared (a: vec3) (b: vec3) =
         let c = a - b in
         dot c c
+
+    let print (v: vec3) =
+        printf "{x = %s; " (Float.to_string v.x);
+        printf "y = %s; " (Float.to_string v.y);
+        printf "z = %s}\n " (Float.to_string v.z)
 end
 
 (* mat2 *)
 
 module Mat22 = struct
+
+    let equal (m0: mat22) (m1: mat22) : bool =
+        Vec2.equal m0.ex m1.ex &&
+        Vec2.equal m0.ey m1.ey 
+
     let identity : mat22 =
         {ex = {x=1.; y=0.}; 
          ey = {x=0.; y=1.}}
@@ -269,9 +301,18 @@ module Mat22 = struct
         let ey = {x = Vec2.dot a.ex b.ey; y = Vec2.dot a.ey b.ey} in
         {ex = ex; ey = ey}
 
+    let print (mat: mat22) =
+        Printf.printf "{ %f; %f}\n" mat.ex.x mat.ey.x;
+        Printf.printf "{ %f; %f}\n" mat.ex.y mat.ey.y;
 end
 
 module Mat33 = struct
+
+    let equal (m0: mat33) (m1: mat33) : bool =
+        Vec3.equal m0.ex m1.ex &&
+        Vec3.equal m0.ey m1.ey &&
+        Vec3.equal m0.ez m1.ez  
+
     let identity : mat33 =
         {ex = {x=1.; y=0.; z=0.}; 
          ey = {x=0.; y=1.; z=0.}; 
@@ -370,6 +411,11 @@ end
 (* rotation functions *)
 
 module Rotation = struct
+
+    let equal rot0 rot1 =
+        float_eq rot0.sine rot1.sine &&
+        float_eq rot0.cosine rot1.cosine
+
     let create angle =
         let sine = Float.sin angle in
         let cosine = Float.cos angle in
@@ -394,6 +440,11 @@ module Rotation = struct
     let mul_transpose q r =
         {sine = q.cosine *. r.sine -. q.sine *. r.cosine;
          cosine = q.cosine *. r.cosine +. q.sine *. r.sine}
+
+    let print (v: rotation) =
+        printf "{sine = %s; " (Float.to_string v.sine);
+        printf "cosine = %s}\n " (Float.to_string v.cosine);
+
 
 end
 
