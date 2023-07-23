@@ -1,5 +1,6 @@
 open Common
 open Math
+open Array
 
 
 type aabb = {lower_bound: vec2; upper_bound: vec2}
@@ -23,17 +24,26 @@ type raycast_result =
 type circle = {radius: float; position: vec2}
 
 (* p1 and p2 are the actual vertices, p0 and p3 are for smooth collision *)
-type edge = {radius: float; 
-             p1: vec2;
-             p2: vec2;
-             p0: vec2;
-             p3: vec2;
-             one_sided: bool}
+type edge = {
+    radius: float; 
+    p1: vec2;
+    p2: vec2;
+    p0: vec2;
+    p3: vec2;
+    one_sided: bool
+}
+
+type polygon = {
+    radius: float;
+    centroid: vec2;
+    vertices: vec2 array;
+    normals: vec2 array;
+}
 
 type shape = 
-    | Circle of float
-    | Edge of vec2 * vec2
-    | Polygon of vec2 list
+    | Circle of circle
+    | Edge of edge
+    | Polygon of polygon
     | Chain of vec2 list
 
 module AABB = struct
@@ -148,6 +158,9 @@ end
 
 
 module Circle = struct 
+    let get_child_count (_: edge) =
+        1
+
     let test_point (circle: circle) (transform: transform) (p: vec2): bool =
         let open Vec2 in
         let center = transform.position + (rotate  circle.position transform.rot) in
@@ -217,6 +230,9 @@ module Edge = struct
          p2 = v2; p3 = edge.p3;
          one_sided = false}
 
+    let get_child_count (_: edge) =
+        1
+
     let test_point (_: edge) (_: transform) (_: vec2): bool =
         false
     
@@ -279,9 +295,12 @@ module Edge = struct
                                     fraction = t;
                                     normal = rotate normal transform.rot
                                 }
+end
 
+module Polygon = struct
 
 end
+
 
 let test_point (circle: edge) (transform: transform) (p: vec2): bool =
     false
