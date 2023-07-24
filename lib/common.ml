@@ -20,3 +20,5 @@ let time_to_sleep = 0.5
 let linear_sleep_tolerance = 0.01 *. length_units_per_meter 
 let angular_Sleep_tolerance = 2.0 /. 180.0 *. Float.pi 
 
+let epsilon = 1e-6
+

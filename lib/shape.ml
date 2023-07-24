@@ -1,3 +1,4 @@
+open Base
 open Math
 
 type aabb = {lower_bound: vec2; upper_bound: vec2}
@@ -70,7 +71,7 @@ module Geometry = struct
             c := !c + (mul_value (p1 + p2 + !p3) (triangle_area *. inv3))
         done;
 
-        (* let _ = assert (!area > Float.epsilon) in *)
+        (* let _ = assert (!area > Common.epsilon) in *)
         c := Vec2.(+) s (Vec2.mul_value !c (1. /. !area)) ;
         !c
 end
@@ -119,17 +120,17 @@ module AABB = struct
 
     let raycast (aabb: aabb) (raycast_in: raycast_in) : raycast_result =
         let open Vec2 in
-        let tmin = ref (-.Float.max_float) in
-        let tmax = ref Float.max_float in
+        let tmin = ref (-.Float.max_value) in
+        let tmax = ref Float.max_value in
         let p = raycast_in.p1 in
         let d = raycast_in.p2 - raycast_in.p1 in
         let absD = abs d in
         let normal = ref Vec2.zero in
 
         let compute (i: int) : bool =
-            if nth absD i < Float.epsilon then
+            if Float.compare (nth absD i) Common.epsilon < 0 then
                 (* Parallel *)
-                if (nth p i) < (nth aabb.lower_bound i) || (nth p i) > (nth aabb.upper_bound i) then
+                if Float.compare (nth p i) (nth aabb.lower_bound i) < 0 || Float.compare (nth p i) (nth aabb.upper_bound i) > 0 then
                     false
                 else
                     true
@@ -138,27 +139,27 @@ module AABB = struct
                 let t1 = ((nth aabb.lower_bound i) -. (nth p i)) *. inv_d in
                 let t2 = ((nth aabb.upper_bound i) -. (nth p i)) *. inv_d in
                 let s = 
-                    if t1 > t2 then 
+                    if Float.compare t1 t2 > 0 then 
                         1.0 
                     else 
                         -1.0 
                 in
                 let t1, t2 = 
-                    if t1 > t2 then 
+                    if Float.compare t1 t2 > 0 then 
                         t2, t1 
                     else 
                         t1, t2 
                 in
                 tmax := Float.min !tmax t2;
-                if t1 > !tmin then begin
+                if Float.compare t1 !tmin > 0 then begin
                     normal := (nth_set Vec2.zero i s);
                     tmin := t1;
-                    if !tmin > !tmax then
+                    if Float.compare !tmin !tmax > 0 then
                         false
                     else
                         true
                 end else
-                    if !tmin > !tmax then
+                    if Float.compare !tmin !tmax > 0 then
                         false
                     else
                         true
@@ -168,7 +169,7 @@ module AABB = struct
             if i < max then
                 match compute i with
                 | false -> false
-                | true  -> compute' (Int.add i 1) max
+                | true  -> compute' (Int.(+) i 1) max
             else
                 true
         in
@@ -178,7 +179,7 @@ module AABB = struct
         match result with
         | false -> None
         | true -> 
-            if !tmin < 0. || raycast_in.max_fraction < !tmin then
+            if Float.compare !tmin 0. < 0 || Float.compare raycast_in.max_fraction !tmin < 0 then
                 None
             else
                 Collision {fraction = !tmin; normal = !normal}
@@ -196,7 +197,7 @@ module Circle = struct
         let open Vec2 in
         let center = transform.position + (rotate  circle.position transform.rot) in
         let d = p - center in
-        (dot d d) <= circle.radius *. circle.radius
+        Float.compare (dot d d) (circle.radius *. circle.radius) <= 0
 
     let compute_aabb (circle: circle) (transform: transform): aabb =
         let open Vec2 in
@@ -229,7 +230,7 @@ module Circle = struct
         let c  = dot s r in
         let rr = dot r r in
         let sigma = c *. c -. rr *. b in
-        if (Float.compare sigma 0.) < 0 && (Float.compare rr Float.epsilon) < 0 then
+        if (Float.compare sigma 0.) < 0 && (Float.compare rr Common.epsilon) < 0 then
             None
         else
             let a =  -.(c +. Float.sqrt sigma) in
@@ -295,28 +296,28 @@ module Edge = struct
         let normal = normalize {x = e.y; y =(-.e.x)} in
 
         let numerator = dot normal (v1 - p1) in
-        if edge.one_sided && numerator > 0. then
+        if edge.one_sided && Float.compare numerator 0. > 0 then
             None
         else
             let denominator = dot normal d in
-            if denominator = 0. then
+            if Float.compare denominator 0. = 0 then
                 None
             else
                 let t = numerator /. denominator in
-                if t < 0. || raycast_in.max_fraction < t then
+                if Float.compare t 0. < 0 || Float.compare raycast_in.max_fraction t < 0 then
                     None
                 else
                     let q = p1 + (mul_value d t) in
                     let r = v2 - v1 in
                     let rr = dot r r in
-                    if rr = 0. then
+                    if Float.compare rr 0. = 0 then
                         None
                     else
                         let s = (dot (q - v1) r) /. rr in
-                        if s < 0. || 1. < s then
+                        if Float.compare s 0. < 0 || Float.compare 1. s < 0 then
                             None
                         else
-                            if numerator > 0. then
+                            if Float.compare numerator 0. > 0 then
                                 Collision {
                                     fraction = t;
                                     normal = mul_value (rotate normal transform.rot) (-.1.)
@@ -376,7 +377,7 @@ module Polygon = struct
             if i >= max then true
             else
                 let dot = Vec2.dot polygon.vertices.(i) (Vec2.(-) p_local polygon.vertices.(i)) in
-                if dot > 0. then false
+                if Float.compare dot 0. > 0 then false
                 else loop (i + 1) max 
         in
         loop 0 (Array.length polygon.vertices)
@@ -393,7 +394,7 @@ module Polygon = struct
                 else
                     let min_point = points.(min_idx) in
                     let current_point = points.(idx) in
-                    if current_point.x < min_point.x then find_leftmost (idx + 1) idx
+                    if Float.compare current_point.x min_point.x < 0 then find_leftmost (idx + 1) idx
                     else find_leftmost (idx + 1) min_idx
             in
             find_leftmost 0 0
@@ -402,32 +403,32 @@ module Polygon = struct
         let is_left_of_line p q r =
             let pq = Vec2.(-) q p in
             let pr = Vec2.(-) r p in
-            Vec2.cross_vec2 pq pr > 0.0
+            Float.compare (Vec2.cross_vec2 pq pr) 0.0 > 0
         in
 
         let n = Array.length points in
         let point_on_hull_idx = leftmost_point_index points in
-        let p = Array.make n points.(point_on_hull_idx) in
+        let p = Array.create ~len:n points.(point_on_hull_idx) in
         let i = ref 0 in
         let endpoint = ref points.(0) in
         let rec loop () =
             p.(!i) <- !endpoint;
             endpoint := points.(0);
             for j = 0 to n - 1 do
-                if !endpoint = p.(!i) || is_left_of_line p.(!i) !endpoint points.(j) then
+                if Vec2.equal !endpoint p.(!i) || is_left_of_line p.(!i) !endpoint points.(j) then
                 endpoint := points.(j)
             done;
             i := !i + 1;
-            if !endpoint <> p.(0) then loop ()
+            if not (Vec2.equal !endpoint p.(0)) then loop ()
         in
         loop ();
       
-        let normals = Array.init !i (fun idx ->
-            let next_idx = (idx + 1) mod !i in
+        let normals = Array.init !i ~f:(fun idx ->
+            let next_idx =  (idx + 1) % !i in
             compute_normal  p.(idx) p.(next_idx)
         ) in
       
-        let vertices = Array.sub p 0 !i in
+        let vertices = Array.sub p ~pos:0 ~len:!i in
         {
             radius = Common.polygon_radius;
             centroid = Geometry.compute_centroid vertices;
