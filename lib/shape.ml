@@ -70,7 +70,7 @@ module Geometry = struct
             c := !c + (mul_value (p1 + p2 + !p3) (triangle_area *. inv3))
         done;
 
-        let _ = assert (!area > Float.epsilon) in
+        (* let _ = assert (!area > Float.epsilon) in *)
         c := Vec2.(+) s (Vec2.mul_value !c (1. /. !area)) ;
         !c
 end
@@ -186,6 +186,9 @@ end
 
 
 module Circle = struct 
+    let create pos radius =
+        {position = pos; radius = radius}
+    
     let get_child_count (_: edge) =
         1
 
@@ -239,7 +242,8 @@ module Circle = struct
 end
 
 module Edge = struct
-    let default: edge =
+
+    let zero: edge =
         {radius = Common.polygon_radius;
          p0 = Vec2.zero; p1 = Vec2.zero;
          p2 = Vec2.zero; p3 = Vec2.zero;
@@ -251,7 +255,7 @@ module Edge = struct
          p2 = v2; p3 = v3;
          one_sided = true}
 
-    let set_two_sided v1 v2 (edge: edge): edge =
+    let create_two_sided v1 v2 (edge: edge): edge =
         {radius = edge.radius;
          p0 = edge.p0; p1 = v1;
          p2 = v2; p3 = edge.p3;
@@ -366,100 +370,69 @@ module Polygon = struct
         done;
         box
 
-    let create_from_cloud (points: vec2 array) =
-        let n = ref (Array.length points) in
-        let _ = assert (!n >= 3) in
-        let temp_count = ref 0 in
+    let test_point (polygon: polygon) (transform: transform) (p: vec2): bool =
+        let p_local = Vec2.rotate_inverse (Vec2.(-) p transform.position) transform.rot in
+        let rec loop i max =
+            if i >= max then true
+            else
+                let dot = Vec2.dot polygon.vertices.(i) (Vec2.(-) p_local polygon.vertices.(i)) in
+                if dot > 0. then false
+                else loop (i + 1) max 
+        in
+        loop 0 (Array.length polygon.vertices)
 
-        (* perform welding and copy veertices into local buffer *)
-        let ps = Array.make Common.max_polygon_vertices {x=0.; y=0.} in
-        for i = 0 to !n - 1 do
-            let v = points.(i) in
-            let unique = ref true in
-            let j = ref 0 in
-            while (!j < (!temp_count - 1)) && !unique do
-                let dist = Vec2.distance_squared v ps.(!j) in
-                let barrier = 0.5 *. 0.5 *. Common.linear_slop *. Common.linear_slop in
-                if (Float.compare dist barrier) < 0 then
-                    unique := false
+    let create_convex_hull (points: vec2 array) =
+        let compute_normal current_point next_point =
+            let edge = Vec2.(-) next_point current_point in
+            Vec2.normalize (Vec2.cross_float edge 1.)
+        in
+
+        let leftmost_point_index (points: vec2 array) =
+            let rec find_leftmost idx min_idx =
+                if idx = Array.length points then min_idx
                 else
-                    j := 1
+                    let min_point = points.(min_idx) in
+                    let current_point = points.(idx) in
+                    if current_point.x < min_point.x then find_leftmost (idx + 1) idx
+                    else find_leftmost (idx + 1) min_idx
+            in
+            find_leftmost 0 0
+        in
+
+        let is_left_of_line p q r =
+            let pq = Vec2.(-) q p in
+            let pr = Vec2.(-) r p in
+            Vec2.cross_vec2 pq pr > 0.0
+        in
+
+        let n = Array.length points in
+        let point_on_hull_idx = leftmost_point_index points in
+        let p = Array.make n points.(point_on_hull_idx) in
+        let i = ref 0 in
+        let endpoint = ref points.(0) in
+        let rec loop () =
+            p.(!i) <- !endpoint;
+            endpoint := points.(0);
+            for j = 0 to n - 1 do
+                if !endpoint = p.(!i) || is_left_of_line p.(!i) !endpoint points.(j) then
+                endpoint := points.(j)
             done;
-            if !unique then
-                ps.(!temp_count) <- v;
-                temp_count := !temp_count + 1;
-        done;
-        n := !temp_count;
-
-        (* polygon is degenerate *)
-        if !n <= 3 then begin
-            assert (false);
-        end;
-
-        (* find the right most point in the hull *)
-        let i0 = ref 0 in
-        let x0 = ref (ps.(0).x) in
-        for i = 1 to (!n - 1) do
-            let x = ps.(i).x in
-            if (x > !x0) || (x = !x0 && ps.(i).y < ps.(!i0).y) then begin
-                i0 := i;
-                x0 := x;
-            end;
-        done;
-
-        let m = ref 0 in
-        let ih = ref !i0 in
-        let should_continue = ref true in
-        let hull = Array.make Common.max_polygon_vertices 0 in
-        while !should_continue do
-            hull.(!m) <- !ih;
-            let ie = ref 0 in
-            for j = 1 to !n - 1 do
-                if !ie = !ih then ie := j
-                else begin
-                    let r = Vec2.(-) ps.(!ie) ps.(hull.(!m)) in
-                    let v = Vec2.(-) ps.(j) ps.(hull.(!m)) in
-                    let c = Vec2.cross_vec2 r v in
-                    if (c < 0.) ||
-                     (c = 0. && (Vec2.norm_squared v) > (Vec2.norm_squared r)) then begin
-                         ie := j
-                    end
-                end
-            done;
-            m := !m + 1;
-            ih := !ie;
-            if !ie = !i0 then
-                should_continue := false
-        done;
-
-        (* polygon is degenerate *)
-        if !m < 3 then begin
-            assert (false);
-        end;
-
-        (* copy vertices *)
-        let vertex = Array.make !m {x=0.; y=0.} in
-        let normals = Array.make !m {x=0.; y=0.} in
-        for i = 0 to !m - 1 do
-            vertex.(i) <- ps.(hull.(i));
-        done;
-
-        (* compute normals *)
-        for i = 0 to !m - 1 do
-            let i2 = ref 0 in
-            if i + 1 < !m then i2 := i + 1
-            else i2 := 0;
-            let edge = Vec2.(-) vertex.(!i2) vertex.(i) in
-            let () = assert ((Vec2.norm_squared edge) > (Float.epsilon *. Float.epsilon)) in
-            let v = Vec2.cross_float edge 1. in
-            normals.(i) <- Vec2.normalize v;
-        done;
-
+            i := !i + 1;
+            if !endpoint <> p.(0) then loop ()
+        in
+        loop ();
+      
+        let normals = Array.init !i (fun idx ->
+            let next_idx = (idx + 1) mod !i in
+            compute_normal  p.(idx) p.(next_idx)
+        ) in
+      
+        let vertices = Array.sub p 0 !i in
         {
-        radius = Common.polygon_radius;
-        centroid = Geometry.compute_centroid vertex;
-        vertices = vertex;
-        normals = normals
+            radius = Common.polygon_radius;
+            centroid = Geometry.compute_centroid vertices;
+            vertices = vertices;
+            normals = normals
         }
 
 

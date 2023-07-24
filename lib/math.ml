@@ -42,6 +42,9 @@ let is_valid (x: float) : bool =
 (* vec2 *)
 
 module Vec2 = struct
+    let create x y =
+        {x = x; y = y}
+
     let equal (v1: vec2) (v2: vec2) =
         float_eq v1.x v2.x &&
         float_eq v1.y v2.y
@@ -146,6 +149,8 @@ end
 (* vec3 *)
 
 module Vec3 = struct
+    let create x y z =
+        {x = x; y = y; z = z}
 
     let equal (v1: vec3) (v2: vec3) : bool =
         float_eq v1.x v2.x 
