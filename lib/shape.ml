@@ -43,6 +43,38 @@ type shape =
     | Polygon of polygon
     | Chain of vec2 list
 
+module Geometry = struct
+    let compute_centroid vs =
+        let count = Array.length vs in
+        let _ = assert (count >= 3) in
+        let c = ref {x=0.; y=0.} in
+        let area = ref 0. in
+        let s = vs.(0) in
+        let inv3 = 1. /. 3. in
+        for i = 0 to count - 1 do
+            let p1 = Vec2.(-) vs.(0) s in
+            let p2 = Vec2.(-) vs.(i) s in
+            let p3 = ref {x=0.; y=0.} in
+            if i + 1 < count then p3 := Vec2.(-) vs.(i+1) s
+            else begin p3 := Vec2.(-) vs.(0) s end;
+
+            let e1 = Vec2.(-) p2 p1 in
+            let e2 = Vec2.(-) !p3 p1 in
+
+            let d = Vec2.cross_vec2 e1 e2 in
+
+            let triangle_area = 0.5 *. d in
+            area := !area +. triangle_area;
+
+            let open Vec2 in
+            c := !c + (mul_value (p1 + p2 + !p3) (triangle_area *. inv3))
+        done;
+
+        let _ = assert (!area > Float.epsilon) in
+        c := Vec2.(+) s (Vec2.mul_value !c (1. /. !area)) ;
+        !c
+end
+
 module AABB = struct
     let is_valid aabb =
         let open Vec2 in
@@ -293,6 +325,143 @@ module Edge = struct
 end
 
 module Polygon = struct
+    let get_child_count (_: polygon) =
+        1
+
+    let create_box hx hy =
+        {radius = Common.polygon_radius;
+         centroid = Vec2.zero;
+         vertices = [|
+             {x=(-.hx); y=(-.hy)};
+             {x=hx; y=(-.hy)};
+             {x=hx; y=hy};
+             {x=(-.hx); y=hy}
+         |];
+         normals = [|
+             {x=0.; y=(-1.)};
+             {x=1.; y=0.};
+             {x=0.; y=1.};
+             {x=(-1.); y=0.}
+         |]}
+
+    let create_box_rotated hx hy center angle =
+        let box = {radius = Common.polygon_radius;
+         centroid = center;
+         vertices = [|
+             {x=(-.hx); y=(-.hy)};
+             {x=hx; y=(-.hy)};
+             {x=hx; y=hy};
+             {x=(-.hx); y=hy}
+         |];
+         normals = [|
+             {x=0.; y=(-1.)};
+             {x=1.; y=0.};
+             {x=0.; y=1.};
+             {x=(-1.); y=0.}
+         |]} in
+        let tr = Transform.create center angle in
+        for i = 0 to 3 do
+            box.vertices.(i) <- Transform.mul_vec2 tr box.vertices.(i);
+            box.normals.(i) <- Transform.mul_vec2 tr box.normals.(i)
+        done;
+        box
+
+    let create_from_cloud (points: vec2 array) =
+        let n = ref (Array.length points) in
+        let _ = assert (!n >= 3) in
+        let temp_count = ref 0 in
+
+        (* perform welding and copy veertices into local buffer *)
+        let ps = Array.make Common.max_polygon_vertices {x=0.; y=0.} in
+        for i = 0 to !n - 1 do
+            let v = points.(i) in
+            let unique = ref true in
+            let j = ref 0 in
+            while (!j < (!temp_count - 1)) && !unique do
+                let dist = Vec2.distance_squared v ps.(!j) in
+                let barrier = 0.5 *. 0.5 *. Common.linear_slop *. Common.linear_slop in
+                if (Float.compare dist barrier) < 0 then
+                    unique := false
+                else
+                    j := 1
+            done;
+            if !unique then
+                ps.(!temp_count) <- v;
+                temp_count := !temp_count + 1;
+        done;
+        n := !temp_count;
+
+        (* polygon is degenerate *)
+        if !n <= 3 then begin
+            assert (false);
+        end;
+
+        (* find the right most point in the hull *)
+        let i0 = ref 0 in
+        let x0 = ref (ps.(0).x) in
+        for i = 1 to (!n - 1) do
+            let x = ps.(i).x in
+            if (x > !x0) || (x = !x0 && ps.(i).y < ps.(!i0).y) then begin
+                i0 := i;
+                x0 := x;
+            end;
+        done;
+
+        let m = ref 0 in
+        let ih = ref !i0 in
+        let should_continue = ref true in
+        let hull = Array.make Common.max_polygon_vertices 0 in
+        while !should_continue do
+            hull.(!m) <- !ih;
+            let ie = ref 0 in
+            for j = 1 to !n - 1 do
+                if !ie = !ih then ie := j
+                else begin
+                    let r = Vec2.(-) ps.(!ie) ps.(hull.(!m)) in
+                    let v = Vec2.(-) ps.(j) ps.(hull.(!m)) in
+                    let c = Vec2.cross_vec2 r v in
+                    if (c < 0.) ||
+                     (c = 0. && (Vec2.norm_squared v) > (Vec2.norm_squared r)) then begin
+                         ie := j
+                    end
+                end
+            done;
+            m := !m + 1;
+            ih := !ie;
+            if !ie = !i0 then
+                should_continue := false
+        done;
+
+        (* polygon is degenerate *)
+        if !m < 3 then begin
+            assert (false);
+        end;
+
+        (* copy vertices *)
+        let vertex = Array.make !m {x=0.; y=0.} in
+        let normals = Array.make !m {x=0.; y=0.} in
+        for i = 0 to !m - 1 do
+            vertex.(i) <- ps.(hull.(i));
+        done;
+
+        (* compute normals *)
+        for i = 0 to !m - 1 do
+            let i2 = ref 0 in
+            if i + 1 < !m then i2 := i + 1
+            else i2 := 0;
+            let edge = Vec2.(-) vertex.(!i2) vertex.(i) in
+            let () = assert ((Vec2.norm_squared edge) > (Float.epsilon *. Float.epsilon)) in
+            let v = Vec2.cross_float edge 1. in
+            normals.(i) <- Vec2.normalize v;
+        done;
+
+        {
+        radius = Common.polygon_radius;
+        centroid = Geometry.compute_centroid vertex;
+        vertices = vertex;
+        normals = normals
+        }
+
 
 end
 
