@@ -1,10 +1,8 @@
-open Graphics
 open Base
 open Box2d
 open Math
 open Shape
-
-
+open Graphics
 
 let despl_point p =
     let delta_pos = {x = 200.; y = 200.} in
@@ -19,19 +17,22 @@ let draw_arrow (p0: vec2) (p1: vec2) =
     lineto (Int.of_float p1.x) (Int.of_float p1.y);
 
     (* Calculate the arrowhead position *)
-    let arrow_size_int = 10 in
-    let arrow_size_float = Float.of_int arrow_size_int in
-    let dx = p1.x -. p0.x in
-    let dy = p1.y -. p0.y in
-    let angle = Float.atan2 dy dx in
-    let arrow_x = p1.x -. (arrow_size_float *. (Float.cos angle)) in
-    let arrow_y = p1.y -. (arrow_size_float *. (Float.sin) angle) in
+    let arrow_size = 10. in
+    let edge = Vec2.(-) p1 p0 in
+    let angle = Vec2.compute_angle edge in
+    let tr = {position= Vec2.zero;
+       rot = Rotation.create (angle -. 0.5*.Float.pi)}  in
+    let arrow_left = Vec2.create (-.arrow_size) (-.arrow_size) in
+    let arrow_right = Vec2.create arrow_size (-.arrow_size) in
+    let arrow_left = Transform.mul_vec2 tr arrow_left in
+    let arrow_right = Transform.mul_vec2 tr arrow_right in
+    let arrow_left = Vec2.(+) p1 arrow_left in
+    let arrow_right = Vec2.(+) p1 arrow_right in
 
-    (* Draw the arrowhead as a small triangle *)
     fill_poly [|
         (Int.of_float p1.x, Int.of_float p1.y);
-        (Int.of_float arrow_x, Int.of_float arrow_y + arrow_size_int / 2);
-        (Int.of_float arrow_x, Int.of_float arrow_y - arrow_size_int / 2)
+        (Int.of_float arrow_left.x, Int.of_float arrow_left.y);
+        (Int.of_float arrow_right.x, Int.of_float arrow_right.y)
     |]
 
 let draw_line (p0: vec2) (p1: vec2) =
@@ -68,7 +69,7 @@ let draw_circle (circle: circle) =
 
 let draw_polygon (polygon: polygon) =
     for i = 0 to Array.length polygon.vertices - 1 do
-        let normal = Vec2.mul_value polygon.normals.(i) 1.5 in
+        let normal = Vec2.mul_value polygon.normals.(i) 100.  in
         let normal_d = Vec2.(+) polygon.vertices.(i) normal in
         set_color red;
         draw_arrow polygon.vertices.(i) normal_d;
@@ -81,12 +82,15 @@ let draw_polygon (polygon: polygon) =
     draw_point polygon.centroid;
     ()
 
+
+    (*
 let%test "compute_convex_hull" =
     open_graph " 600x600";
     set_color black;
+
     let points = [|
         Vec2.create 0. 0.;
-        Vec2.create 0. 150.;
+        Vec2.create 0. 180.;
         Vec2.create 100. 100.;
         Vec2.create 100. 0.;
     |] in
@@ -101,7 +105,105 @@ let%test "compute_convex_hull" =
 
     while true do
         ignore (wait_next_event [Poll]);
-    done; 
+    done;
     true
+    *)
 
 
+
+(* Polygon tests *)
+
+let test_raycast polygon raycast_in is_collision =
+    match Polygon.raycast polygon raycast_in Transform.identity with
+    | None -> not is_collision
+    | Collision _ -> is_collision
+
+(* Test 0: Two raycast tests *)
+let%test "polygon_raycast_0" =
+    let points = [|
+        Vec2.create 0. 0.;
+        Vec2.create 0. 100.;
+        Vec2.create 100. 100.;
+        Vec2.create 100. 0.;
+    |] in
+    let points = Array.rev points in
+    let polygon = Polygon.create_convex_hull points in
+    let raycast_0 = {
+        max_fraction = 1.;
+        p1 = Vec2.create (-50.) (-50.);
+        p2 = Vec2.create 20. 20.} in
+    let raycast_1 = {
+        max_fraction = 1.;
+        p1 = Vec2.create (-50.) (-50.);
+        p2 = Vec2.create (-40.) (-40.);} in
+    test_raycast polygon raycast_0 true &&
+    test_raycast polygon raycast_1 false
+
+
+(* Test 1: Ray starts inside the polygon, points away *)
+let%test "polygon_raycast_1" =
+    let points = [|
+        Vec2.create 0. 0.;
+        Vec2.create 0. 100.;
+        Vec2.create 100. 100.;
+        Vec2.create 100. 0.;
+    |] in
+    let points = Array.rev points in
+    let polygon = Polygon.create_convex_hull points in
+    let raycast = {
+        max_fraction = 1.;
+        p1 = Vec2.create 50. 50.;
+        p2 = Vec2.create 70. 70.;
+    } in
+    test_raycast polygon raycast false
+
+(* Test 2: Ray starts inside the polygon, points towards the edge *)
+let%test "polygon_raycast_2" =
+    let points = [|
+        Vec2.create 0. 0.;
+        Vec2.create 0. 100.;
+        Vec2.create 100. 100.;
+        Vec2.create 100. 0.;
+    |] in
+    let points = Array.rev points in
+    let polygon = Polygon.create_convex_hull points in
+    let raycast = {
+        max_fraction = 1.;
+        p1 = Vec2.create 50. 50.;
+        p2 = Vec2.create 0. 50.;
+    } in
+    test_raycast polygon raycast true
+
+(* Test 3: Ray starts outside, intersects the polygon *)
+let%test "polygon_raycast_3" =
+    let points = [|
+        Vec2.create 0. 0.;
+        Vec2.create 0. 100.;
+        Vec2.create 100. 100.;
+        Vec2.create 100. 0.;
+    |] in
+    let points = Array.rev points in
+    let polygon = Polygon.create_convex_hull points in
+    let raycast = {
+        max_fraction = 1.;
+        p1 = Vec2.create 50. 150.;
+        p2 = Vec2.create 50. (-50.);
+    } in
+    test_raycast polygon raycast true
+
+(* Test 4: Ray starts outside, does not intersect the polygon *)
+let%test "polygon_raycast_4" =
+    let points = [|
+        Vec2.create 0. 0.;
+        Vec2.create 0. 100.;
+        Vec2.create 100. 100.;
+        Vec2.create 100. 0.;
+    |] in
+    let points = Array.rev points in
+    let polygon = Polygon.create_convex_hull points in
+    let raycast = {
+        max_fraction = 1.;
+        p1 = Vec2.create (-50.) 50.;
+        p2 = Vec2.create (-50.) 150.;
+    } in
+    test_raycast polygon raycast false

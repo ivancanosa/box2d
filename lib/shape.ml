@@ -382,10 +382,56 @@ module Polygon = struct
         in
         loop 0 (Array.length polygon.vertices)
 
+    let raycast (polygon: polygon) (raycast_in: raycast_in) (xf: transform) : raycast_result =
+        let p1 = Vec2.rotate_inverse (Vec2.(-) raycast_in.p1 xf.position) xf.rot in
+        let p2 = Vec2.rotate_inverse (Vec2.(-) raycast_in.p2 xf.position) xf.rot in
+        let d = Vec2.(-) p2 p1 in
+        let lower = ref 0. in
+        let upper = ref (raycast_in.max_fraction) in
+        let index = ref (-1) in
+        let m_count = Array.length polygon.vertices in
+        let maybe_collision = ref true in
+        let i = ref 0 in
+
+        while !i < m_count && !maybe_collision do
+            let numerator = Vec2.dot polygon.normals.(!i) (Vec2.(-) polygon.vertices.(!i) p1) in
+            let denominator = Vec2.dot polygon.normals.(!i) d in
+            if Float.compare denominator 0. = 0 && Float.compare numerator 0. < 0 then
+                maybe_collision := false
+            else if Float.compare denominator 0. < 0 &&
+                Float.compare numerator (!lower *. denominator) < 0 then begin
+                
+                lower := numerator /. denominator;
+                index := !i;
+            end else if Float.compare denominator 0. > 0 && 
+                Float.compare numerator (!upper *. denominator) < 0 then begin
+
+                upper := numerator /. denominator;
+            end;
+
+            if Float.compare !upper !lower < 0 then begin
+                maybe_collision := false;
+            end;
+            i := !i + 1;
+        done;
+
+(*        let _ = assert (Float.compare 0. !lower <= 0 && 
+                Float.compare !lower raycast_in.max_fraction <= 0) in  *)
+
+        if !index >= 0 && !maybe_collision then 
+            let normal = Vec2.rotate polygon.normals.(!index) xf.rot in
+            Collision {normal = normal; fraction = !lower}
+        else 
+            None
+
+
+
+
     let create_convex_hull (points: vec2 array) =
         let compute_normal current_point next_point =
             let edge = Vec2.(-) next_point current_point in
-            Vec2.normalize (Vec2.cross_float edge 1.)
+            let _ = assert (Float.compare (Vec2.norm_squared edge) (Common.epsilon *. Common.epsilon) > 0) in
+            Vec2.normalize (Vec2.cross_float edge 1.) 
         in
 
         let leftmost_point_index (points: vec2 array) =
@@ -423,12 +469,13 @@ module Polygon = struct
         in
         loop ();
       
+        let vertices = Array.sub p ~pos:0 ~len:!i in
+
         let normals = Array.init !i ~f:(fun idx ->
-            let next_idx =  (idx + 1) % !i in
-            compute_normal  p.(idx) p.(next_idx)
+            let next_idx = (idx + 1) % !i in
+            compute_normal p.(next_idx) p.(idx)
         ) in
       
-        let vertices = Array.sub p ~pos:0 ~len:!i in
         {
             radius = Common.polygon_radius;
             centroid = Geometry.compute_centroid vertices;

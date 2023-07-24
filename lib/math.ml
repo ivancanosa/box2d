@@ -76,11 +76,8 @@ module Vec2 = struct
       Float.sqrt (v.x *. v.x +. v.y *. v.y)
 
     let normalize (v: vec2) =
-      if (Float.compare v.x 0.0) <> 0 && (Float.compare v.y 0.0) <> 0 then
         let module_val = norm v in
         { x = v.x /. module_val; y = v.y /. module_val }
-      else
-        v
 
     let norm_squared (v: vec2) =
       v.x *. v.x +. v.y *. v.y
@@ -96,6 +93,9 @@ module Vec2 = struct
 
     let cross_inv (s: float) (a: vec2) : vec2 =
         {x = (-.s) *. a.y; y = s *. a.x}
+
+    let compute_angle (v: vec2) =
+        Float.atan2 v.y v.x
 
     let (+) (v1: vec2) (v2: vec2) =
         { x = v1.x +. v2.x; y = v1.y +. v2.y }
