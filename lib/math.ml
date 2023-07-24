@@ -1,4 +1,6 @@
 open Stdio
+open Base
+
 (* types *)
 
 type vec2 = {x: float; y: float}
@@ -35,8 +37,8 @@ let is_power_of_two x =
     x > 0 && (x land (x - 1)) = 0
 
 let is_valid (x: float) : bool =
-    match Float.classify_float x with
-    | FP_normal | FP_subnormal | FP_zero -> true
+    match Float.classify x with
+    | Normal | Subnormal | Zero -> true
     | _ -> false
 
 (* vec2 *)
@@ -307,8 +309,8 @@ module Mat22 = struct
         {ex = ex; ey = ey}
 
     let print (mat: mat22) =
-        Printf.printf "{ %f; %f}\n" mat.ex.x mat.ey.x;
-        Printf.printf "{ %f; %f}\n" mat.ex.y mat.ey.y;
+        printf "{ %f; %f}\n" mat.ex.x mat.ey.x;
+        printf "{ %f; %f}\n" mat.ex.y mat.ey.y;
 end
 
 module Mat33 = struct
@@ -507,7 +509,7 @@ module Sweep = struct
 
     let normalize (sweep: sweep) : sweep =
         let twoPi = 2. *. Float.pi in
-        let d = twoPi *. Float.floor(sweep.a0 /. twoPi) in
+        let d = twoPi *. (Float.round_down (sweep.a0 /. twoPi)) in
         { local_center = sweep.local_center;
           c0 = sweep.c0; 
           c  = sweep.c;
