@@ -142,9 +142,11 @@ module Vec2 = struct
         { x = q.cosine *. v.x   +. q.sine *. v.y;
           y = (-.q.sine) *. v.x +. q.cosine *. v.y}
 
+    let to_string (v: vec2) =
+        "{x = " ^ Float.to_string v.x ^ "; y = " ^ Float.to_string v.y ^ "}"
+
     let print (v: vec2) =
-        printf "{x = %s; " (Float.to_string v.x);
-        printf "y = %s}\n " (Float.to_string v.y);
+        printf "%s\n" (to_string v)
 
 end
 

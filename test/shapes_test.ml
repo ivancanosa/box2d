@@ -82,8 +82,8 @@ let draw_polygon (polygon: polygon) =
     draw_point polygon.centroid;
     ()
 
-
     (*
+
 let%test "compute_convex_hull" =
     open_graph " 600x600";
     set_color black;
@@ -117,6 +117,7 @@ let test_raycast polygon raycast_in is_collision =
     | None -> not is_collision
     | Collision _ -> is_collision
 
+    
 (* Test 0: Two raycast tests *)
 let%test "polygon_raycast_0" =
     let points = [|
@@ -134,7 +135,7 @@ let%test "polygon_raycast_0" =
         max_fraction = 1.;
         p1 = Vec2.create (-50.) (-50.);
         p2 = Vec2.create (-40.) (-40.);} in
-    let _ = Polygon.compute_mass polygon 10. in
+    
     test_raycast polygon raycast_0 true &&
     test_raycast polygon raycast_1 false
 
@@ -187,3 +188,16 @@ let%test "polygon_raycast_4" =
         p2 = Vec2.create (-50.) 150.;
     } in
     test_raycast polygon raycast false
+    
+let%test "polygon_compute_mass" =
+    let points = [|
+        Vec2.create 0. 0.;
+        Vec2.create 0. 100.;
+        Vec2.create 100. 100.;
+        Vec2.create 100. 0.;
+    |] in
+    let polygon = Polygon.create_convex_hull points in
+    let mass = Polygon.compute_mass polygon 1. in
+    Float.compare mass.mass 10000. = 0 &&
+    Vec2.equal mass.center (Vec2.create 50. 50.)
+

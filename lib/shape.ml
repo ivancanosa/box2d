@@ -1,5 +1,6 @@
 open Base
 open Math
+open Stdio
 
 type aabb = {lower_bound: vec2; upper_bound: vec2}
 
@@ -43,6 +44,11 @@ type shape =
     | Edge of edge
     | Polygon of polygon
     | Chain of vec2 list
+
+let print_mass mass =
+    printf "{mass = %s; " (Float.to_string mass.mass);
+    printf "center = %s; " (Vec2.to_string mass.center);
+    printf "rot_inertia = %s}\n" (Float.to_string mass.rot_inertia);
 
 module Geometry = struct
     let compute_centroid vs =
@@ -430,7 +436,7 @@ module Polygon = struct
     let create_convex_hull (points: vec2 array) =
         let compute_normal current_point next_point =
             let edge = Vec2.(-) next_point current_point in
-            let _ = assert (Float.compare (Vec2.norm_squared edge) (Common.epsilon *. Common.epsilon) > 0) in
+            let _ = assert (Float.compare (Vec2.norm_squared edge) (Common.epsilon *. Common.epsilon) > 0) in 
             Vec2.normalize (Vec2.cross_float edge 1.) 
         in
 
@@ -446,10 +452,10 @@ module Polygon = struct
             find_leftmost 0 0
         in
 
-        let is_left_of_line p q r =
+        let is_right_of_line p q r =
             let pq = Vec2.(-) q p in
             let pr = Vec2.(-) r p in
-            Float.compare (Vec2.cross_vec2 pq pr) 0.0 > 0
+            Float.compare (Vec2.cross_vec2 pq pr) 0.0 < 0
         in
 
         let n = Array.length points in
@@ -461,7 +467,7 @@ module Polygon = struct
             p.(!i) <- !endpoint;
             endpoint := points.(0);
             for j = 0 to n - 1 do
-                if Vec2.equal !endpoint p.(!i) || is_left_of_line p.(!i) !endpoint points.(j) then
+                if Vec2.equal !endpoint p.(!i) || is_right_of_line p.(!i) !endpoint points.(j) then
                 endpoint := points.(j)
             done;
             i := !i + 1;
@@ -473,7 +479,7 @@ module Polygon = struct
 
         let normals = Array.init !i ~f:(fun idx ->
             let next_idx = (idx + 1) % !i in
-            compute_normal p.(next_idx) p.(idx)
+            compute_normal p.(idx) p.(next_idx) 
         ) in
       
         {
@@ -500,7 +506,7 @@ module Polygon = struct
 
     let compute_mass (polygon: polygon) (density: float): mass =
         let count = Array.length polygon.vertices in
-        let s = polygon.centroid in
+        let s = polygon.vertices.(0) in
         let k_inv3 = 1. /. 3. in
         let rec loop i center area rot_inertia =
             if i >= count then (center, area, rot_inertia)
@@ -508,7 +514,6 @@ module Polygon = struct
                 let e1 = Vec2.(-) polygon.vertices.(i) s in
                 let next_i = (i + 1) % count in
                 let e2 = Vec2.(-) polygon.vertices.(next_i) s in
-                Vec2.print e2;
 
                 let d = Vec2.cross_vec2 e1 e2 in
                 let triangle_area = 0.5 *. d in
@@ -521,8 +526,9 @@ module Polygon = struct
                 loop (i+1) center area rot_inertia
         in
         let center, area, rot_inertia = loop 0 Vec2.zero 0. 0. in
+
         let mass = density *. area in
-(*        let _ = assert (Float.compare area Common.epsilon > 0) in*)
+        let _ = assert (Float.compare area Common.epsilon > 0) in 
         let center = Vec2.mul_value center (1. /. area) in
         let center = Vec2.(+) center s in
         let rot_inertia = (rot_inertia *. density) *. ((Vec2.dot center center) -. Vec2.dot center center) in
