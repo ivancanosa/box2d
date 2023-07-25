@@ -77,6 +77,9 @@ module Geometry = struct
 end
 
 module AABB = struct
+    let create lower_bound upper_bound = 
+        {lower_bound = lower_bound; upper_bound = upper_bound}
+
     let is_valid aabb =
         let open Vec2 in
         let d = aabb.upper_bound - aabb.lower_bound in
@@ -424,9 +427,6 @@ module Polygon = struct
         else 
             None
 
-
-
-
     let create_convex_hull (points: vec2 array) =
         let compute_normal current_point next_point =
             let edge = Vec2.(-) next_point current_point in
@@ -482,6 +482,53 @@ module Polygon = struct
             vertices = vertices;
             normals = normals
         }
+
+    let compute_aabb (polygon: polygon) (xf: transform): aabb =
+        let count = Array.length polygon.vertices in
+        let rec loop i lower upper =
+            if i >=count then (lower, upper)
+            else
+                let v = Transform.mul_vec2 xf polygon.vertices.(i) in
+                let lower = Vec2.min lower v in
+                let upper = Vec2.max upper v in
+                loop (i+1) lower upper
+        in
+        let initial_vec = Transform.mul_vec2 xf polygon.vertices.(0) in
+        let lower, upper = loop 1 initial_vec initial_vec in
+        let r = Vec2.create polygon.radius polygon.radius in
+        AABB.create (Vec2.(-) lower r) (Vec2.(+) upper r)
+
+    let compute_mass (polygon: polygon) (density: float): mass =
+        let count = Array.length polygon.vertices in
+        let s = polygon.centroid in
+        let k_inv3 = 1. /. 3. in
+        let rec loop i center area rot_inertia =
+            if i >= count then (center, area, rot_inertia)
+            else
+                let e1 = Vec2.(-) polygon.vertices.(i) s in
+                let next_i = (i + 1) % count in
+                let e2 = Vec2.(-) polygon.vertices.(next_i) s in
+                Vec2.print e2;
+
+                let d = Vec2.cross_vec2 e1 e2 in
+                let triangle_area = 0.5 *. d in
+                let area = area +. triangle_area in
+                let center = Vec2.(+) center (Vec2.mul_value (Vec2.(+) e1 e2) (triangle_area *. k_inv3)) in
+                let intx2 = e1.x *. e1.x +. e2.x *. e1.x +. e2.x *. e2.x in
+                let inty2 = e1.y *. e1.y +. e2.y *. e1.y +. e2.y *. e2.y in
+                let rot_inertia = rot_inertia +. (0.25 *. k_inv3 *. d) *. (intx2 +. inty2) in
+
+                loop (i+1) center area rot_inertia
+        in
+        let center, area, rot_inertia = loop 0 Vec2.zero 0. 0. in
+        let mass = density *. area in
+(*        let _ = assert (Float.compare area Common.epsilon > 0) in*)
+        let center = Vec2.mul_value center (1. /. area) in
+        let center = Vec2.(+) center s in
+        let rot_inertia = (rot_inertia *. density) *. ((Vec2.dot center center) -. Vec2.dot center center) in
+        {mass = mass; center = center; rot_inertia = rot_inertia}
+
+               
 
 
 end
