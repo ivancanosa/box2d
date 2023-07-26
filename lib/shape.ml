@@ -77,7 +77,7 @@ module Geometry = struct
             c := !c + (mul_value (p1 + p2 + !p3) (triangle_area *. inv3))
         done;
 
-        (* let _ = assert (!area > Common.epsilon) in *)
+        let _ = assert (Float.compare !area  Common.epsilon > 0) in 
         c := Vec2.(+) s (Vec2.mul_value !c (1. /. !area)) ;
         !c
 end
@@ -424,13 +424,13 @@ module Polygon = struct
             i := !i + 1;
         done;
 
-(*        let _ = assert (Float.compare 0. !lower <= 0 && 
-                Float.compare !lower raycast_in.max_fraction <= 0) in  *)
 
-        if !index >= 0 && !maybe_collision then 
+        if !index >= 0 && !maybe_collision then  begin
+            assert (Float.compare 0. !lower <= 0 && 
+                    Float.compare !lower raycast_in.max_fraction <= 0);
             let normal = Vec2.rotate polygon.normals.(!index) xf.rot in
             Collision {normal = normal; fraction = !lower}
-        else 
+        end else 
             None
 
     let create_convex_hull (points: vec2 array) =
