@@ -39,11 +39,18 @@ type polygon = {
     normals: vec2 array;
 }
 
+type chain = {
+    radius: float;
+    vertices: vec2 array;
+    prev_vertex: vec2;
+    next_vertex: vec2;
+}
+
 type shape = 
     | Circle of circle
     | Edge of edge
     | Polygon of polygon
-    | Chain of vec2 list
+    | Chain of chain
 
 let print_mass mass =
     printf "{mass = %s; " (Float.to_string mass.mass);
@@ -533,9 +540,137 @@ module Polygon = struct
         let center = Vec2.(+) center s in
         let rot_inertia = (rot_inertia *. density) *. ((Vec2.dot center center) -. Vec2.dot center center) in
         {mass = mass; center = center; rot_inertia = rot_inertia}
+end
 
-               
+module Chain = struct
+    let get_child_count (chain: chain) =
+        (Array.length chain.vertices) - 1
 
+    let check_unique_points points =
+        let count = Array.length points in
+        let rec loop_distance_check i =
+            if i >= count then ()
+            else
+                let v1 = points.(i) in
+                let i2 = (i + 1) % count in
+                let v2 = points.(i2) in
+                let distance = Vec2.distance_squared v1 v2 in
+                let _ = assert(Float.compare distance (Common.linear_slop *. Common.linear_slop) > 0) in
+                loop_distance_check (i + 1)
+        in
+        loop_distance_check 0
+
+    let create_loop vertices =
+        let count = Array.length vertices in
+        let _ = assert(count >= 0 ) in
+        check_unique_points vertices;
+        let new_vertices = Array.create ~len:(count + 1) Vec2.zero in
+        Array.blit ~src:vertices ~src_pos:0 ~dst:new_vertices ~dst_pos:0 ~len:count;
+        new_vertices.(count) <- new_vertices.(0);
+        {radius = Common.polygon_radius;
+        vertices = new_vertices;
+        prev_vertex = new_vertices.(count - 3);
+        next_vertex = new_vertices.(1)}
+
+    let create_chain vertices prev_vertex next_vertex =
+        let count = Array.length vertices in
+        let _ = assert(count >= 0 ) in
+        check_unique_points vertices;
+        let new_vertices = Array.create ~len:count Vec2.zero in
+        Array.blit ~src:vertices ~src_pos:0 ~dst:new_vertices ~dst_pos:0 ~len:count;
+        {radius = Common.polygon_radius;
+        vertices = new_vertices;
+        prev_vertex = prev_vertex;
+        next_vertex = next_vertex}
+
+    let get_child_edge chain index =
+        let count = Array.length chain.vertices in
+        let _ = assert (0 <= index && index < (count - 1)) in
+        let radius = chain.radius in
+        let v1 = chain.vertices.(index) in
+        let v2 = chain.vertices.(index + 1) in
+        let one_sided = true in
+        let get_v1 =
+            if index > 0 then chain.vertices.(index - 1)
+            else chain.prev_vertex
+        in
+        let get_v3 =
+            if index < count - 2 then chain.vertices.(index + 2)
+            else chain.next_vertex
+        in
+        { radius = radius;
+        p1 = v1;
+        p2 = v2;
+        p0 = get_v1;
+        p3 = get_v3;
+        one_sided = one_sided}
+
+    let test_point (_: chain) (_: transform) (_: vec2): bool =
+        false
+
+    let raycast (chain: chain) (raycast_in: raycast_in) (transform: transform) child_index : raycast_result =
+        let count = Array.length chain.vertices in
+        assert (child_index < count);
+        let v1 = chain.vertices.(child_index) in
+        let v2 = chain.vertices.((child_index + 1) % count) in
+        let edge = Edge.create_one_sided v1 v2 Vec2.zero Vec2.zero in
+        Edge.raycast edge raycast_in transform
+
+    let compute_aabb (chain: chain) (xf: transform) (child_index: int): aabb =
+        let count = Array.length chain.vertices in
+        assert (child_index < count);
+        let i1 = child_index in
+        let i2 = (i1 + 1) % count in
+        let v1 = Transform.mul_vec2 xf chain.vertices.(i1) in
+        let v2 = Transform.mul_vec2 xf chain.vertices.(i2) in
+
+        let lower = Vec2.min v1 v2 in
+        let upper = Vec2.max v1 v2 in
+
+        let r = Vec2.create chain.radius chain.radius in
+        {lower_bound = Vec2.(-) lower r;
+         upper_bound = Vec2.(+) upper r}
+    
+    let compute_mass (_: chain) (_: float) =
+        {mass = 0.; center = Vec2.zero; rot_inertia = 0.}
+end
+
+module Shape = struct 
+
+    let get_child_count shape =
+        match shape with
+        | Circle _ -> 1
+        | Edge _ -> 1
+        | Polygon _ -> 1
+        | Chain chain -> Chain.get_child_count chain
+
+    let test_point shape xf point=
+        match shape with
+        | Circle circle -> Circle.test_point circle xf point
+        | Edge _ -> false
+        | Polygon polygon -> Polygon.test_point polygon xf point 
+        | Chain _ -> false
+
+    let raycast shape raycast_in xf child_index =
+        match shape with
+        | Circle circle -> Circle.raycast circle raycast_in xf 
+        | Edge edge -> Edge.raycast edge raycast_in xf 
+        | Polygon polygon -> Polygon.raycast polygon raycast_in xf
+        | Chain chain -> Chain.raycast chain raycast_in xf child_index
+
+    let compute_aabb shape xf child_index =
+        match shape with
+        | Circle circle -> Circle.compute_aabb circle xf 
+        | Edge edge -> Edge.compute_aabb edge xf 
+        | Polygon polygon -> Polygon.compute_aabb polygon xf
+        | Chain chain -> Chain.compute_aabb chain xf child_index
+
+    let compute_mass shape density = 
+        match shape with
+        | Circle circle -> Circle.compute_mass circle density
+        | Edge edge -> Edge.compute_mass edge density
+        | Polygon polygon -> Polygon.compute_mass polygon density
+        | Chain chain -> Chain.compute_mass chain density
 
 end
 
